@@ -18,6 +18,17 @@ namespace BizHawk.Client.Common.Api.Public.Providers
 				new List<ApiParameter>(){ Params.Buttons, Params.HeldFrames, Params.SleepFrames, Params.Callback},
 				"Queues an input with given Buttons that is held for given HeldFrames and sleeps for given SleepFrames. When the input is finished, Callback will be called (if provided)."
 			),
+			new ApiCommand("QueueInputSequence",
+				args=>{
+					var body = args?.Last() ?? "";
+					var cb = string.Join("/", args?.Take(args?.Count()-1 ?? 0) ?? null);
+					body.Split(new char[]{'\n'}).Select(line=>line.Split(new char[]{'/'}).Select(
+						a=>InputQueue.Enqueue(new Input(ParseButtonString(a?.FirstOrDefault()), int.Parse(a?.ElementAtOrDefault(1) ?? "0"),int.Parse(a?.ElementAtOrDefault(2) ?? "0"),null)));
+					if (cb) InputQueue.Enqueue(new Input("", 0, 0, cb);
+				},
+				new List<ApiParameter>(){ Params.Callback },
+				"Queues a list of inputs, which must be given in the body of the request. Buttons are of the form supplised by QueueInput, with one input per line in the body, and no callbacks. When all the inputs are finished, Callback will be called (if provided)."
+			),
 			new ApiCommand("HoldFrames", args=>(HoldFrames = int.Parse(args.FirstOrDefault() ?? HoldFrames.ToString())).ToString(), new List<ApiParameter>() {Params.Frames }, "Sets the number of Frames a held input (containing Hold) will last"),
 		};
 
@@ -40,8 +51,9 @@ namespace BizHawk.Client.Common.Api.Public.Providers
 			public string CallbackUrl { get; private set; }
 			private int TotalFrames { get; set; }
 			public bool IsHoldInput => Buttons.Contains("Hold");
+			public bool IsTurboInput => Buttons.Contains("Turbo");
 			public bool ShouldHoldPastEnd => SleepFrames < 0;
-			public bool IsSleeping => TotalFrames > HeldFrames && (!ShouldHoldPastEnd || TotalFrames > HeldFrames + SleepFrames + HoldFrames);
+			public bool IsSleeping => (IsTurboInput && TotalFrames % 2 != 0) || (TotalFrames > HeldFrames && (!ShouldHoldPastEnd || TotalFrames > HeldFrames + SleepFrames + HoldFrames));
 			public bool IsExpired => TotalFrames >= HeldFrames + SleepFrames;
 
 			public Input(IEnumerable<string> buttons, int heldFrames = 0, int sleepFrames = 0, string callbackUrl = null)
@@ -111,10 +123,10 @@ namespace BizHawk.Client.Common.Api.Public.Providers
 
 		public IEnumerable<string> Buttons
 		{
-			get => Global.AutofireStickyXORAdapter.Source.Definition.BoolButtons.Concat(new string[] { "Hold" });
+			get => Global.AutofireStickyXORAdapter.Source.Definition.BoolButtons.Concat(new string[] { "Hold", "Turbo" });
 			set
 			{
-				foreach (var button in value.Where(b => b != "Hold"))
+				foreach (var button in value.Where(b => b != "Hold" && b != "Turbo"))
 				{
 					Global.LuaAndAdaptor.SetButton(button, true);
 				}
